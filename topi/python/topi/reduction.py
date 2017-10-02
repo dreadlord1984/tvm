@@ -2,7 +2,7 @@
 """Reduce operators"""
 from __future__ import absolute_import as _abs
 import tvm
-
+from . import tag
 
 def _get_real_axis(ndim, axis):
     if axis is None:
@@ -37,13 +37,14 @@ def get_reduce_out_shape(src_shape, axis=None, keepdims=False):
     return dst_shape
 
 
-@tvm.tag_scope(tag="comm_reduce")
+@tvm.tag_scope(tag=tag.COMM_REDUCE)
 def comm_reduce(data, axis=None, keepdims=False, func=tvm.sum):
     """Reducing the data
 
     Parameters
     ----------
     data : tvm.Tensor
+        The input data
 
     axis : None or int or tuple of int
         Axis or axes along which a sum is performed.
@@ -120,7 +121,7 @@ def sum(data, axis=None, keepdims=False):
 
     keepdims : bool
         If this is set to True, the axes which are reduced are left in the result as dimensions
-         with size one.
+        with size one.
         With this option, the result will broadcast correctly against the input array.
 
     Returns
@@ -145,7 +146,7 @@ def max(data, axis=None, keepdims=False):
 
     keepdims : bool
         If this is set to True, the axes which are reduced are left in the result as dimensions
-         with size one.
+        with size one.
         With this option, the result will broadcast correctly against the input array.
 
     Returns
@@ -170,7 +171,7 @@ def min(data, axis=None, keepdims=False):
 
     keepdims : bool
         If this is set to True, the axes which are reduced are left in the result as dimensions
-         with size one.
+        with size one.
         With this option, the result will broadcast correctly against the input array.
 
     Returns

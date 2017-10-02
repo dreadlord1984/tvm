@@ -61,6 +61,38 @@ def test_llvm_add_pipeline():
         check_llvm()
 
 
+def test_llvm_persist_parallel():
+    n = 128
+    A = tvm.placeholder((n,), name='A')
+    B = tvm.compute(A.shape, lambda *i: A(*i) + 1, name='B')
+    C = tvm.compute(A.shape, lambda *i: tvm.sqrt(B(*i)) * 2 + 2, name='C')
+    s = tvm.create_schedule(C.op)
+    xo, xi = s[C].split(C.op.axis[0], factor=8)
+    xo1, xo2 = s[C].split(xo, nparts=1)
+    s[B].compute_at(s[C], xo1)
+    s[B].parallel(s[B].op.axis[0])
+    s[B].pragma(s[B].op.axis[0], "parallel_barrier_when_finish")
+    s[C].parallel(xi)
+    s[C].pragma(xo1, "parallel_launch_point")
+    s[C].pragma(xi, "parallel_stride_pattern")
+
+    def check_llvm():
+        if not tvm.module.enabled("llvm"):
+            return
+        # BUILD and invoke the kernel.
+        f = tvm.build(s, [A, C], "llvm")
+        ctx = tvm.cpu(0)
+        # launch the kernel.
+        a = tvm.nd.array(np.random.uniform(size=n).astype(A.dtype), ctx)
+        c = tvm.nd.array(np.zeros(n, dtype=C.dtype), ctx)
+        f(a, c)
+        np.testing.assert_allclose(c.asnumpy(),
+                                   np.sqrt(a.asnumpy() + 1) * 2 + 2,
+                                   rtol=1e-5)
+
+    check_llvm()
+
+
 def test_llvm_flip_pipeline():
     def check_llvm(nn, base):
         if not tvm.module.enabled("llvm"):
@@ -201,6 +233,7 @@ def test_multiple_func():
     check_llvm()
 
 
+
 def test_llvm_select():
     def check_llvm(n, offset):
         if not tvm.module.enabled("llvm"):
@@ -221,7 +254,28 @@ def test_llvm_select():
     check_llvm(64, 8)
 
 
+def test_llvm_bool():
+    def check_llvm(n):
+        if not tvm.module.enabled("llvm"):
+            return
+        A = tvm.placeholder((n, ), name='A', dtype="int32")
+        C = tvm.compute((n,), lambda i: A[i].equal(1).astype("float"), name='C')
+        s = tvm.create_schedule(C.op)
+        # build and invoke the kernel.
+        f = tvm.build(s, [A, C], "llvm")
+        ctx = tvm.cpu(0)
+        # launch the kernel.
+        a = tvm.nd.array(np.random.randint(0, 2, size=(n,)).astype(A.dtype), ctx)
+        c = tvm.nd.empty((n,), C.dtype, ctx)
+        f(a, c)
+        c_np = a.asnumpy() == 1
+        np.testing.assert_allclose(c.asnumpy(), c_np)
+    check_llvm(64)
+
+
 if __name__ == "__main__":
+    test_llvm_bool()
+    test_llvm_persist_parallel()
     test_llvm_select()
     test_llvm_vadd_pipeline()
     test_llvm_add_pipeline()

@@ -198,6 +198,22 @@ class Stage : public NodeRef {
    */
   Stage& prefetch(const Tensor &domain, IterVar var, Expr offset); //NOLINT(*)
   /*!
+   * \brief Set alignment requirement for specific dimension.
+   *
+   *  Such that stride[axis] == k * factor + offset for some k.
+   *
+   * \param axis The dimension to be specified for alignment.
+   * \param factor The factor multiple of alignment
+   * \param offset The required offset factor.
+   * \return reference to self
+   */
+  Stage& storage_align(IterVar axis, int factor, int offset); //NOLINT(*)
+  /*!
+   * \brief Compute current stage with double buffering.
+   * \return reference to self.
+   */
+  Stage& double_buffer();   // NOLINT(*)
+  /*!
    * \brief whether the stage has been scheduled.
    * \return whether the stage has been scheduled.
    */
@@ -268,8 +284,15 @@ class Schedule : public NodeRef {
   /*!
    * \brief Create a cache write tensor for producing tensor.
    *  The the tensor will take over body of original tensor op.
-   *  The original tensor's body will be changed to an identity read
-   *  from the corresponding cache.
+   *
+   *  This function can be used to do data layout transformation.
+   *  If there is a split/fuse/reorder on the data parallel axis of tensor
+   *  before cache_write is called. The intermediate cache stores
+   *  the data in the layout as the iteration order of leave axis.
+   *  The data will be transformed back to the original layout in the original tensor.
+   *  User can further call compute_inline to inline the original layout and keep
+   *  the data stored in the transformed layout.
+   *
    * \param tensor The tensor to be produced.
    * \param scope The scope of the storage.
    * \return The created tensor.
@@ -280,6 +303,8 @@ class Schedule : public NodeRef {
    * This will create a new stage that generated the new tensor with axis
    * as the first dimension. The tensor's body will be rewritten as a reduction
    * over the factored tensor.
+   *
+   *  P. Suriana, A. Adams and S. Kamil. Parallel associative reductions in halide. CGO'17
    *
    * \param tensor The tensor to be factored.
    * \param axis The reduction axis in tensor's schedule to be factored.
@@ -397,6 +422,8 @@ class StageNode : public Node {
   std::string scope;
   /*! \brief Whether this is an output stage */
   bool is_output{false};
+  /*! \brief Whether apply double buffer optimization to this stage */
+  bool double_buffer{false};
   /*!
    * \brief The parent group of the current stage.
    *  The stage cannot be assigned to stages outside the group.
@@ -418,6 +445,7 @@ class StageNode : public Node {
     v->Visit("attach_stage", &attach_stage);
     v->Visit("scope", &scope);
     v->Visit("is_output", &is_output);
+    v->Visit("double_buffer", &double_buffer);
     v->Visit("group", &group);
     v->Visit("num_child_stages", &num_child_stages);
   }
@@ -496,6 +524,10 @@ class IterVarAttrNode : public Node {
    *   when the axis is marked as Tensorized
    */
   TensorIntrin tensor_intrin;
+  /*! \brief Alignment factor of buffer dimension */
+  int dim_align_factor{0};
+  /*! \brief Alignment offset of buffer dimension */
+  int dim_align_offset{0};
   /*!
    * \brief Additional pragmas, array of StringImm
    */
@@ -507,6 +539,8 @@ class IterVarAttrNode : public Node {
     v->Visit("prefetch_data", &prefetch_data);
     v->Visit("prefetch_offset", &prefetch_offset);
     v->Visit("tensor_intrin", &tensor_intrin);
+    v->Visit("dim_align_factor", &dim_align_factor);
+    v->Visit("dim_align_offset", &dim_align_offset);
     v->Visit("pragmas", &pragmas);
   }
 

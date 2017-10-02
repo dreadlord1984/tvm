@@ -9,7 +9,7 @@ USE_MANUAL_CODE = False
 
 @tvm.register_func
 def tvm_callback_cuda_compile(code):
-    ptx =  nvcc.compile_cuda(code, target="ptx", options=["-arch=sm_52"])
+    ptx =  nvcc.compile_cuda(code, target="ptx")
     return ptx
 
 def write_code(code, fname):
@@ -96,6 +96,8 @@ def test_gemm():
     s[BB].bind(ty, thread_y)
     s[BB].bind(tx, thread_x)
     s[BB].vectorize(xi)
+    s[AA].double_buffer()
+    s[BB].double_buffer()
     # correctness
     def check_device(device):
         if not tvm.module.enabled(device):

@@ -198,19 +198,35 @@ void ComputeOpNode::GatherBound(
 }
 
 Stmt ComputeOpNode::BuildRealize(
-    const Operation& self,
+    const Stage& stage,
     const std::unordered_map<IterVar, Range>& realize_map,
     const Stmt& realize_body) const {
-  CHECK_EQ(self.operator->(), this);
+  CHECK_EQ(stage->op.get(), this);
   Halide::Internal::Region bounds;
   for (IterVar iv : this->axis) {
     bounds.push_back(realize_map.at(iv));
   }
   Stmt realize = realize_body;
-  for (int i = self->num_outputs(); i > 0; --i) {
-    Tensor t = self.output(i-1);
+  for (int i = this->num_outputs(); i > 0; --i) {
+    Tensor t = stage->op.output(i-1);
     realize = ir::Realize::make(t->op, t->value_index,
       t->dtype, bounds, const_true(), realize);
+    // alignment requirement, only useful for compute
+    for (size_t i = 0; i < this->axis.size(); ++i) {
+      auto it = stage->iter_var_attrs.find(this->axis[i]);
+      if (it != stage->iter_var_attrs.end()) {
+        IterVarAttr attr = (*it).second;
+        if (attr->dim_align_factor != 0) {
+          Array<Expr> tuple = {static_cast<int>(i),
+                               attr->dim_align_factor,
+                               attr->dim_align_offset};
+          realize = ir::AttrStmt::make(
+              t, ir::attr::buffer_dim_align,
+              Call::make(Handle(), ir::intrinsic::tvm_tuple, tuple, Call::Intrinsic),
+              realize);
+        }
+      }
+    }
   }
   return realize;
 }
@@ -304,7 +320,7 @@ enum class ComputeType {
 };
 
 ComputeType DetectComputeType(const ComputeOpNode* self,
-                                const Stage& stage) {
+                              const Stage& stage) {
   // Verify correctness of leaf nest.
   int normal_red = 0, thread_red = 0, tensorize = 0;
 
@@ -367,8 +383,9 @@ ComputeLoopNest ComputeLoopNest::make(
   // make main loop nest
   ret.main_nest = op::MakeLoopNest(
       stage, dom_map, 0, false, std::unordered_set<IterVar>(), &ret.main_vmap);
-  ret.main_predicates = op::MakeBoundCheck(stage, dom_map, false,
-      std::unordered_set<IterVar>(), ret.main_vmap);
+  ret.main_predicates = schedule::MakeBoundCheck(
+      stage, dom_map, ret.main_vmap, false,
+      std::unordered_set<IterVar>());
   for (auto& e : ret.main_predicates) {
     e = likely(e);
   }
@@ -408,8 +425,8 @@ ComputeLoopNest ComputeLoopNest::make(
     ret.init_nest = op::MakeLoopNest(
         stage, dom_map, begin_loop, true,
         skip_iter, &(ret.init_vmap));
-    ret.init_predicates = op::MakeBoundCheck(
-        stage, dom_map, true, skip_iter, ret.init_vmap);
+    ret.init_predicates = schedule::MakeBoundCheck(
+        stage, dom_map, ret.init_vmap, true, skip_iter);
     for (auto& e : ret.init_predicates) {
       e = likely(e);
     }

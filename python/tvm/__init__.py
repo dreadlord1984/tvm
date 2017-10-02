@@ -14,6 +14,7 @@ from . import schedule
 from . import module
 from . import node
 from . import ir_builder
+from . import target
 
 from . import ndarray as nd
 from .ndarray import context, cpu, gpu, opencl, cl, metal, mtl, vpi, rocm
@@ -29,3 +30,4 @@ from .ndarray import register_extension
 from .schedule import create_schedule
 from .build_module import build, lower, build_config
 from .tag import tag_scope
+from .contrib import rocm as _rocm

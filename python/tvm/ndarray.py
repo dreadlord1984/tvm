@@ -9,7 +9,8 @@ import numpy as _np
 
 from ._ffi.ndarray import TVMContext, TVMType, NDArrayBase
 from ._ffi.ndarray import context, empty
-from ._ffi.ndarray import _set_class_ndarray, register_extension
+from ._ffi.ndarray import _set_class_ndarray
+from ._ffi.ndarray import register_extension, free_extension_handle
 
 class NDArray(NDArrayBase):
     """Lightweight NDArray class of TVM runtime.
@@ -139,7 +140,7 @@ def array(arr, ctx=cpu(0)):
     ret : NDArray
         The created array
     """
-    if not isinstance(arr, _np.ndarray):
+    if not isinstance(arr, (_np.ndarray, NDArray)):
         arr = _np.array(arr)
     return empty(arr.shape, arr.dtype, ctx).copyfrom(arr)
 

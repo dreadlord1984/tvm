@@ -89,8 +89,8 @@ inline std::string NodeTypeName() {
 
 // extensions for tvm arg value
 
-template<typename TNodeRef, typename>
-inline TVMArgValue::operator TNodeRef() const {
+template<typename TNodeRef>
+inline TNodeRef TVMArgValue::AsNodeRef() const {
   static_assert(
       std::is_base_of<NodeRef, TNodeRef>::value,
       "Conversion only works for NodeRef");
@@ -156,18 +156,22 @@ inline TVMRetValue& TVMRetValue::operator=(const NodeRef& other) {
   return *this;
 }
 
-template<typename TNodeRef, typename>
-inline TVMRetValue::operator TNodeRef() const {
+template<typename TNodeRef>
+inline TNodeRef TVMRetValue::AsNodeRef() const {
   static_assert(
       std::is_base_of<NodeRef, TNodeRef>::value,
       "Conversion only works for NodeRef");
   if (type_code_ == kNull) return TNodeRef();
   TVM_CHECK_TYPE_CODE(type_code_, kNodeHandle);
-  return TNodeRef(*ptr<std::shared_ptr<Node> >());
+  std::shared_ptr<Node>& sptr = *ptr<std::shared_ptr<Node> >();
+  CHECK(NodeTypeChecker<TNodeRef>::Check(sptr.get()))
+      << "Expected type " << NodeTypeName<TNodeRef>()
+      << " but get " << sptr->type_key();
+  return TNodeRef(sptr);
 }
 
-inline void TVMArgsSetter::operator()(size_t i, NodeRef& other) const {  // NOLINT(*)
-  values_[i].v_handle = &(other.node_);
+inline void TVMArgsSetter::operator()(size_t i, const NodeRef& other) const {  // NOLINT(*)
+  values_[i].v_handle = const_cast<std::shared_ptr<Node>*>(&(other.node_));
   type_codes_[i] = kNodeHandle;
 }
 
